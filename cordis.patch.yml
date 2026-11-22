@@ -1,0 +1,20 @@
+# Default bundle patch. Replace baseUrl with your own Firefly III instance
+# (https only for remote hosts) and save a personal access token with
+# /firefly-token <token> after installing.
+- insert:
+    - id: firefly-iii
+      name: dsh-plugin-firefly-iii
+      config:
+        baseUrl: https://firefly.example.com/
+        currency: CNY
+        timeZone: Asia/Shanghai
+        confirmWrites: true
+        pageSize: 25
+        maxAttachmentMb: 10
+        expectedApiPrefix: '6.7.'
+        autoCreate:
+          accounts: false
+          categories: false
+          tags: false
+          budgets: false
+          piggyBanks: false

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
+  <defs>
+    <radialGradient id="ffTailGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#FFD874" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#F2A93B" stop-opacity="0.15"/>
+    </radialGradient>
+    <linearGradient id="ffBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#6B5546"/>
+      <stop offset="1" stop-color="#43342C"/>
+    </linearGradient>
+  </defs>
+  <circle cx="18" cy="27.5" r="6.2" fill="url(#ffTailGlow)"/>
+  <circle cx="18" cy="27.5" r="3.1" fill="#F6C453"/>
+  <path d="M18 27.5 L18 15.5" stroke="#43342C" stroke-width="2.4" stroke-linecap="round"/>
+  <ellipse cx="18" cy="22.6" rx="2.6" ry="6.6" fill="url(#ffBody)"/>
+  <circle cx="18" cy="12.4" r="3.4" fill="#43342C"/>
+  <path d="M15.8 9.6 C14.4 7.6 13.9 6.6 14.2 5.6" fill="none" stroke="#43342C" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M20.2 9.6 C21.6 7.6 22.1 6.6 21.8 5.6" fill="none" stroke="#43342C" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="M15.4 18.2 C10.9 15.6 8.2 16.6 6.8 19.2 C5.6 21.6 7.6 24.4 11.4 24.6 C13.7 24.7 15.2 23.4 15.8 21.6 Z" fill="#CFE3EA" fill-opacity="0.55" stroke="#8FAEB9" stroke-width="1.1" stroke-linejoin="round"/>
+  <path d="M20.6 18.2 C25.1 15.6 27.8 16.6 29.2 19.2 C30.4 21.6 28.4 24.4 24.6 24.6 C22.3 24.7 20.8 23.4 20.2 21.6 Z" fill="#CFE3EA" fill-opacity="0.55" stroke="#8FAEB9" stroke-width="1.1" stroke-linejoin="round"/>
+  <circle cx="18" cy="21.8" r="0.85" fill="#F6C453"/>
+</svg>

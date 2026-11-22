@@ -1,0 +1,64 @@
+{
+  "name": "dsh-plugin-firefly-iii",
+  "version": "0.2.0",
+  "description": "Firefly III bookkeeping for DeepSeek Harness: transactions, accounts, budgets, reports, subscriptions, recurring transactions, piggy banks, attachments, rules, currencies and CSV export, with a bundled skill and a Web settings page.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client/index.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "src",
+    "client",
+    "skills",
+    "locale/*.json",
+    "docs",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  },
+  "engines": {
+    "node": ">=22.19.0",
+    "dsh": ">=0.2.2-rc.1 <0.3.0"
+  },
+  "license": "MIT",
+  "author": "Hu Zhang (https://github.com/zh-Littlebird)",
+  "homepage": "https://github.com/zh-Littlebird/dsh-plugin-firefly-iii#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zh-Littlebird/dsh-plugin-firefly-iii.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zh-Littlebird/dsh-plugin-firefly-iii/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "firefly-iii",
+    "bookkeeping",
+    "personal-finance",
+    "ledger"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.0 <5.0.0"
+  }
+}
