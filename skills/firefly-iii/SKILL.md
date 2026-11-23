@@ -72,7 +72,8 @@ description: 当用户要把流水录入 Firefly III、补录历史账、基于 
 
 ## 配置与 token
 
-- 用 `/firefly-token <token>` 保存令牌（命令不在会话日志记录输入）；`/firefly-status` 验证连接和 API 版本，`expectedApiPrefix` 默认 `6.7.`。
+- 令牌与实例地址优先让用户在 DSH 的 **设置 → Firefly III** 页面填写（令牌只写入本机凭据库，不会回显）；不要让用户把令牌粘贴进对话。也可用 `/firefly-token <token>`（命令不在会话日志记录输入）保存令牌。
+- `/firefly-status` 验证连接和 API 版本，`expectedApiPrefix` 默认 `6.7.`。
 - 实例升级后先跑 `firefly_admin resource=instance action=about` 与 `action=capabilities`；缺失能力（如 Webhook 404）按实例限制提示，不要反复重试。
 - `confirmWrites=false` 时日常写入直接执行；删除等破坏性操作仍强制 approval。会话 approval 策略为 never 时这些操作会失败，属于 fail-closed。
 - autoCreate 五个开关控制隐式新建与显式创建；关闭时不要引导用户“先随便填一个名字”。

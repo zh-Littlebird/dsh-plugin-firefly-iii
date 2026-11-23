@@ -19,7 +19,7 @@ export async function resolveToken(ctx) {
   }
   throw new FireflyError(
     'AUTH_NOT_CONFIGURED',
-    `No Firefly III token is configured. Run /firefly-token <token>, or set ${TOKEN_ENV} for this process. Obtain a token in Firefly III under Profile → OAuth → Personal Access Tokens.`,
+    `No Firefly III token is configured. Set it in Settings → Firefly III, run /firefly-token <token>, or set ${TOKEN_ENV} for this process. Obtain a token in Firefly III under Profile → OAuth → Personal Access Tokens.`,
   );
 }
 

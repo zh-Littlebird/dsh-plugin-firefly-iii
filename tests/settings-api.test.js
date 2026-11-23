@@ -4,8 +4,8 @@ import { normalizeConfig } from '../src/config.js';
 import { createSettingsHandler, ROUTE_PREFIX } from '../src/settings-api.js';
 import { createSettingsService } from '../src/settings.js';
 
-function config() {
-  const result = normalizeConfig({ baseUrl: 'https://firefly.example.com/', confirmWrites: false });
+function config(overrides = {}) {
+  const result = normalizeConfig({ baseUrl: 'https://firefly.example.com/', confirmWrites: false, ...overrides });
   assert.ok(result.value, JSON.stringify(result.issues));
   return result.value;
 }
@@ -15,7 +15,7 @@ function fakeEditor() {
   return {
     calls,
     entries() {
-      return [{ id: 'firefly-iii', name: 'dsh-plugin-firefly-iii' }];
+      return [{ id: 'firefly-iii', patchId: 'firefly-iii', name: 'dsh-plugin-firefly-iii' }];
     },
     async edit(entry, change) {
       calls.push(entry);
@@ -32,11 +32,28 @@ function fakeEditor() {
   };
 }
 
-function context(editor) {
+function fakeCredentials(initial) {
+  const state = { record: initial };
+  return {
+    state,
+    async readRecord() {
+      return state.record;
+    },
+    async modifyRecord(key, mutate) {
+      state.record = await mutate(state.record);
+      return state.record;
+    },
+    async deleteRecord() {
+      state.record = undefined;
+    },
+  };
+}
+
+function context(editor, credentials = fakeCredentials(undefined)) {
   return {
     get(name) {
       if (name === 'configEditor') return editor;
-      if (name === 'credentials') return { readRecord: async () => undefined };
+      if (name === 'credentials') return credentials;
       return undefined;
     },
   };
@@ -72,6 +89,8 @@ function call(handler, method, path, options) {
   return handler(pending.req, pending.res).then(pending.done);
 }
 
+const WRITE = { origin: 'http://127.0.0.1:51076', 'x-firefly-iii-ui': '1' };
+
 test('settings endpoint reads the effective view over loopback', async () => {
   const cfg = config();
   const handler = createSettingsHandler({
@@ -82,11 +101,14 @@ test('settings endpoint reads the effective view over loopback', async () => {
   const result = await call(handler, 'GET', `${ROUTE_PREFIX}/settings`);
   assert.equal(result.status, 200);
   assert.equal(result.body.editable, true);
+  assert.equal(result.body.connection.editable, true);
+  assert.equal(result.body.connection.baseUrl, 'https://firefly.example.com/');
   assert.equal(result.body.autoCreate.accounts, false);
   assert.equal(result.body.token.configured, false);
+  assert.equal(result.body.token.writable, true);
 });
 
-test('settings writes require the page header, loopback Origin, and valid switches', async () => {
+test('settings writes require the page header, loopback Origin, and valid values', async () => {
   const cfg = config();
   const editor = fakeEditor();
   const handler = createSettingsHandler({ ctx: context(editor), config: cfg, settings: createSettingsService(context(editor), cfg) });
@@ -105,20 +127,61 @@ test('settings writes require the page header, loopback Origin, and valid switch
 
   const invalid = await call(handler, 'PUT', `${ROUTE_PREFIX}/settings`, {
     body: { autoCreate: { unknown: true } },
-    headers: { origin: 'http://127.0.0.1:51076', 'x-firefly-iii-ui': '1' },
+    headers: WRITE,
   });
   assert.equal(invalid.status, 400);
   assert.equal(invalid.body.error.code, 'INVALID_SETTINGS');
   assert.equal(editor.calls.length, 0);
 
+  const badUrl = await call(handler, 'PUT', `${ROUTE_PREFIX}/settings`, {
+    body: { baseUrl: 'http://remote.example/' },
+    headers: WRITE,
+  });
+  assert.equal(badUrl.status, 400);
+  assert.equal(editor.calls.length, 0);
+
+  const empty = await call(handler, 'PUT', `${ROUTE_PREFIX}/settings`, { body: {}, headers: WRITE });
+  assert.equal(empty.status, 400);
+
   const ok = await call(handler, 'PUT', `${ROUTE_PREFIX}/settings`, {
     body: { autoCreate: { accounts: true } },
-    headers: { origin: 'http://127.0.0.1:51076', 'x-firefly-iii-ui': '1' },
+    headers: WRITE,
   });
   assert.equal(ok.status, 200);
+  assert.equal(ok.body.ok, true);
+  assert.equal(ok.body.pendingRestart, true);
+  assert.deepEqual(ok.body.saved.autoCreate, { accounts: true });
   assert.equal(editor.calls.length, 1);
   assert.equal(editor.calls.config.autoCreate.accounts, true);
   assert.equal(editor.calls.config.baseUrl, 'https://firefly.example.com/');
+});
+
+test('settings endpoint saves a token through credentials without a config edit', async () => {
+  const cfg = config();
+  const editor = fakeEditor();
+  const credentials = fakeCredentials(undefined);
+  const handler = createSettingsHandler({
+    ctx: context(editor, credentials),
+    config: cfg,
+    settings: createSettingsService(context(editor, credentials), cfg),
+  });
+  const result = await call(handler, 'PUT', `${ROUTE_PREFIX}/settings`, {
+    body: { token: 'q'.repeat(40) },
+    headers: WRITE,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.pendingRestart, false);
+  assert.equal(result.body.saved.token, 'saved');
+  assert.equal(editor.calls.length, 0);
+  assert.equal(credentials.state.record.key, 'q'.repeat(40));
+
+  const cleared = await call(handler, 'PUT', `${ROUTE_PREFIX}/settings`, {
+    body: { clearToken: true },
+    headers: WRITE,
+  });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.body.saved.token, 'cleared');
+  assert.equal(credentials.state.record, undefined);
 });
 
 test('desktop shells write with an opaque, file, or absent Origin plus the page header', async () => {
@@ -136,6 +199,36 @@ test('desktop shells write with an opaque, file, or absent Origin plus the page 
     assert.equal(result.status, 200, `origin=${origin}`);
   }
   assert.equal(editor.calls.length, 4);
+});
+
+test('test endpoint requires the write header and explains invalid draft values', async () => {
+  const cfg = config();
+  const editor = fakeEditor();
+  const handler = createSettingsHandler({ ctx: context(editor), config: cfg, settings: createSettingsService(context(editor), cfg) });
+
+  const noHeader = await call(handler, 'POST', `${ROUTE_PREFIX}/test`, { body: {} });
+  assert.equal(noHeader.status, 403);
+
+  const badUrl = await call(handler, 'POST', `${ROUTE_PREFIX}/test`, {
+    body: { baseUrl: 'not-a-url' },
+    headers: WRITE,
+  });
+  assert.equal(badUrl.status, 200);
+  assert.equal(badUrl.body.ok, false);
+  assert.ok(typeof badUrl.body.message === 'string' && badUrl.body.message.length > 0);
+
+  const shortToken = await call(handler, 'POST', `${ROUTE_PREFIX}/test`, {
+    body: { baseUrl: 'https://firefly.example.com/', token: 'short' },
+    headers: WRITE,
+  });
+  assert.equal(shortToken.body.ok, false);
+
+  const unreachable = await call(handler, 'POST', `${ROUTE_PREFIX}/test`, {
+    body: { baseUrl: 'http://127.0.0.1:1/', token: 'r'.repeat(40) },
+    headers: WRITE,
+  });
+  assert.equal(unreachable.body.ok, false);
+  assert.equal(unreachable.body.baseUrl, 'http://127.0.0.1:1/');
 });
 
 test('settings endpoint refuses non-loopback peers and unknown paths', async () => {

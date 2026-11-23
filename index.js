@@ -126,7 +126,7 @@ function registerCommands(ctx, config) {
           if (!status.configured) {
             return {
               kind: 'error',
-              text: 'No Firefly III token configured. Run /firefly-token <token> or set FIREFLY_III_ACCESS_TOKEN.',
+              text: 'No Firefly III token configured. Set it in Settings → Firefly III, run /firefly-token <token>, or set FIREFLY_III_ACCESS_TOKEN.',
             };
           }
           const { token, source } = await resolveToken(ctx);

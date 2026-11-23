@@ -39,7 +39,11 @@ function isValidTimeZone(timeZone) {
   }
 }
 
-function normalizeBaseUrl(value) {
+/**
+ * Normalize an instance root URL. `''` means "not configured yet"; `null`
+ * means invalid. Exported because the Settings page validates the same way.
+ */
+export function normalizeBaseUrl(value) {
   const raw = String(value ?? '').trim();
   if (raw === '') return '';
   let url;
@@ -79,12 +83,11 @@ export function normalizeConfig(raw) {
       message: 'baseUrl must be an absolute http(s) URL; plain http is only accepted for localhost.',
       path: ['baseUrl'],
     });
-  } else if (baseUrl === '') {
-    issues.push({
-      message: 'baseUrl is required (for example https://firefly.example.com/).',
-      path: ['baseUrl'],
-    });
   } else {
+    // An empty baseUrl is accepted at activation on purpose: the Web settings
+    // page is where a new install sets the instance, and a plugin that refuses
+    // to load without it could never show that page. Tools fail with a clear
+    // CONFIGURATION_MISSING error until one is saved.
     config.baseUrl = baseUrl;
   }
 
@@ -147,8 +150,8 @@ function nativeObject(dict, meta = {}) {
 const NATIVE_CONFIG = nativeObject(
   {
     baseUrl: nativeField('string', {
-      required: true,
-      description: 'Firefly III instance root URL, for example https://firefly.example.com/.',
+      default: '',
+      description: 'Firefly III instance root URL, for example https://firefly.example.com/. Editable in Settings → Firefly III.',
     }),
     currency: nativeField('string', { default: DEFAULTS.currency, description: 'Default currency code used for reports and summaries.' }),
     timeZone: nativeField('string', { default: DEFAULTS.timeZone, description: 'IANA time zone used to normalize transaction timestamps and report periods.' }),

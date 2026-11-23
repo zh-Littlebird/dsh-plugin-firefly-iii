@@ -1,6 +1,8 @@
-# Default bundle patch. Replace baseUrl with your own Firefly III instance
-# (https only for remote hosts) and save a personal access token with
-# /firefly-token <token> after installing.
+# Default bundle patch. After installing, set your Firefly III instance URL and
+# personal access token on the Settings → Firefly III page: the URL is saved back
+# here and the token goes to the DSH credential store. The baseUrl below is only
+# the fallback default (https only for remote hosts); /firefly-token <token>
+# also works for the token.
 - insert:
     - id: firefly-iii
       name: dsh-plugin-firefly-iii

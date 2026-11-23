@@ -25,7 +25,7 @@ Firefly III bookkeeping for DeepSeek Harness: typed tools, a bundled skill, and 
 | CSV 导出 | 官方 `/v1/data/export/*` 导出到会话工作区，拒绝覆盖已有文件 |
 | 实例诊断 | 版本、发布说明、端点能力探测；升级后先确认实例能力 |
 | 安全边界 | Token 只保存在 DSH 凭据库；purge/destroy/cron/batch finish 永久拦截；破坏性操作强制审批 |
-| Web 设置页 | 设置 → Firefly III：查看连接信息、切换五项 `autoCreate`、测试连接 |
+| Web 设置页 | 设置 → Firefly III：填写实例地址与访问令牌、切换五项 `autoCreate`、测试连接（可先用未保存的草稿值测试） |
 
 ### 1.1 与 Firefly III 6.7 对齐
 
@@ -72,10 +72,9 @@ dsh plugin --profile desktop add "$PWD"
 
 安装后：
 
-1. 编辑 profile 的 `cordis.patch.yml`，把 `baseUrl` 换成你的 Firefly III 地址（远程实例必须 `https`）。
-2. 在 Firefly III 的 **Profile → OAuth → Personal Access Tokens** 创建令牌。
-3. 在 DSH 里执行 `/firefly-token <token>` 保存令牌，再执行 `/firefly-status` 验证连接与 API 版本。
-4. 打开 **设置 → Firefly III** 可查看连接信息、切换 `autoCreate` 开关并测试连接。
+1. 在 Firefly III 的 **Profile → OAuth → Personal Access Tokens** 创建令牌。
+2. 打开 **设置 → Firefly III**，填写实例地址与访问令牌，点「测试连接」确认实例可达后再保存：地址与 `autoCreate` 开关写回 profile 配置，令牌写入 DSH 凭据库且此后不再回显。
+3. 也可以继续用配置文件与环境变量：在 profile 的 `cordis.patch.yml` 里改 `baseUrl`，用 `/firefly-token <token>` 保存令牌，再用 `/firefly-status` 验证连接与 API 版本。
 
 > 安装或升级 Host 插件后，如果 DSH Desktop 正在运行，需要重启 Harness 进程才能加载新的 Host 代码；Web 设置页无需刷新即可使用。
 
@@ -89,7 +88,7 @@ dsh plugin --profile desktop remove dsh-plugin-firefly-iii
 
 ## 4. 配置
 
-`cordis.patch.yml` 带一份可加载的默认配置；安装后按你的实例修改：
+`cordis.patch.yml` 带一份可加载的默认配置；安装后按你的实例修改。也可以直接在 **设置 → Firefly III** 页面填写实例地址，保存后写回 profile 配置：
 
 ```yaml
 - insert:
@@ -113,7 +112,7 @@ dsh plugin --profile desktop remove dsh-plugin-firefly-iii
 
 | 字段 | 默认值 | 说明 |
 |---|---|---|
-| `baseUrl` | 必填 | Firefly III 根地址；远程实例仅接受 `https`，本机允许 `http` |
+| `baseUrl` | `''` | Firefly III 根地址；远程实例仅接受 `https`，本机允许 `http`。留空时插件仍会加载以打开设置页，但工具会报 `CONFIGURATION_MISSING`，直到在设置页或配置里填写 |
 | `currency` | `CNY` | 报表与汇总的默认币种 |
 | `timeZone` | `Asia/Shanghai` | 交易时间与报表周期的 IANA 时区 |
 | `confirmWrites` | `true` | 日常写入是否先走审批；`false` 时直接执行，破坏性操作仍强制审批 |
@@ -131,9 +130,10 @@ dsh plugin --profile desktop remove dsh-plugin-firefly-iii
 
 ### 4.1 令牌
 
-- 推荐：`/firefly-token <token>`，值写入 DSH 凭据库，不进入会话日志。
+- 推荐：在 **设置 → Firefly III** 的「访问令牌」里粘贴后保存，值写入 DSH 凭据库、不回显、不进入会话日志，也无需重启插件。
+- 命令：`/firefly-token <token>` 同样写入凭据库，且命令不在会话日志记录输入。
 - 备用：进程环境变量 `FIREFLY_III_ACCESS_TOKEN`。
-- 清除：`/firefly-token-clear`。
+- 清除：设置页的「清除令牌」，或 `/firefly-token-clear`。
 - 检查：`/firefly-status` 显示版本、API 版本、令牌来源，并在系列不匹配时告警。
 
 插件没有任何工具参数接受令牌，令牌也不会出现在工具结果、错误或调试日志中。
@@ -207,7 +207,7 @@ firefly_admin   resource=instance action=capabilities
 node --test tests/*.test.js
 ```
 
-覆盖配置校验、HTTP 错误映射（401/404/422）、分页、日期与交易规范化、记账预览/提交/拆分、账户搬迁审批、主数据、6.7 图表/洞察/自动补全裸数组解析、账户 `active`/`date` 过滤、分类颜色、预算额度图表、实例诊断与 Web 设置页。当前 39 个用例。
+覆盖配置校验、HTTP 错误映射（401/404/422）、分页、日期与交易规范化、记账预览/提交/拆分、账户搬迁审批、主数据、6.7 图表/洞察/自动补全裸数组解析、账户 `active`/`date` 过滤、分类颜色、预算额度图表、实例诊断与 Web 设置页（地址与令牌校验、令牌先于配置写入、清除令牌、设置接口的写入保护与草稿值测试）。当前 47 个用例。
 
 ---
 
@@ -251,7 +251,7 @@ node --check index.js
 
 1. 更新 `package.json` 版本与 `cordis.patch.yml` 默认 `expectedApiPrefix`。
 2. 运行全部测试，并在真实 Firefly III 6.7.x 实例上跑一遍只读冒烟（`about`、账户列表、图表、自动补全、能力探测）。
-3. 打 tag 并创建 GitHub Release，例如 `v0.2.0`。
+3. 打 tag 并创建 GitHub Release，例如 `v0.3.0`。
 
 ---
 

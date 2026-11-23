@@ -59,7 +59,7 @@ function errorFromResponse(status, body, text) {
     // 6.7.9 reports a missing object as 404, so 401 is authentication only.
     return new FireflyError(
       'AUTH_FAILED',
-      `${message} Firefly III returns 401 when the personal access token is missing, invalid or revoked; save a fresh token with /firefly-token.`,
+      `${message} Firefly III returns 401 when the personal access token is missing, invalid or revoked; save a fresh token in Settings → Firefly III or with /firefly-token.`,
       details,
     );
   }
@@ -109,7 +109,14 @@ export class FireflyClient {
     this.config = config;
     this.token = token;
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch;
-    this.basePath = `${config.baseUrl.replace(/\/+$/, '')}/api/v1`;
+    const baseUrl = String(config.baseUrl ?? '').trim();
+    if (baseUrl === '') {
+      throw new FireflyError(
+        'CONFIGURATION_MISSING',
+        'No Firefly III instance URL is configured. Set it in Settings → Firefly III (or in the plugin config as baseUrl).',
+      );
+    }
+    this.basePath = `${baseUrl.replace(/\/+$/, '')}/api/v1`;
   }
 
   url(path, query) {

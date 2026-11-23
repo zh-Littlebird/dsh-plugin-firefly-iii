@@ -266,3 +266,19 @@ test('losslessJson removes values the host output validator rejects', async () =
   assert.equal(Object.hasOwn(result, 'hint'), false);
   assert.deepEqual(JSON.parse(JSON.stringify(result)), result);
 });
+
+test('an empty baseUrl is accepted at activation so Settings can configure it', () => {
+  const previous = process.env.FIREFLY_III_BASE_URL;
+  delete process.env.FIREFLY_III_BASE_URL;
+  try {
+    const result = normalizeConfig({});
+    assert.ok(result.value, JSON.stringify(result.issues));
+    assert.equal(result.value.baseUrl, '');
+    assert.throws(
+      () => new FireflyClient(result.value, 'token'),
+      (error) => error.code === 'CONFIGURATION_MISSING' && error.message.includes('Settings'),
+    );
+  } finally {
+    if (previous !== undefined) process.env.FIREFLY_III_BASE_URL = previous;
+  }
+});

@@ -2,15 +2,18 @@
  * Loopback-only HTTP surface behind the Web "Firefly III" settings section.
  *
  * GET  /firefly-iii-ui/settings  effective Config snapshot for the page
- * PUT  /firefly-iii-ui/settings  persist autoCreate switches through configEditor
- * POST /firefly-iii-ui/test      verify token + API version against the instance
+ * PUT  /firefly-iii-ui/settings  persist autoCreate/baseUrl through configEditor
+ *                                and the access token through credentials
+ * POST /firefly-iii-ui/test      verify token + API version against the
+ *                                instance, optionally using unsaved draft values
  *
  * No token value is ever returned: the page only learns whether one exists.
  */
 import { FireflyClient } from './client.js';
+import { normalizeBaseUrl } from './config.js';
 import { resolveToken } from './credentials.js';
 import { FireflyError } from './errors.js';
-import { FireflySettingsError, normalizeAutoCreatePatch } from './settings.js';
+import { FireflySettingsError, normalizeSettingsPatch, TOKEN_MIN_LENGTH } from './settings.js';
 
 export const ROUTE_PREFIX = '/firefly-iii-ui';
 const WRITE_HEADER = 'x-firefly-iii-ui';
@@ -30,27 +33,40 @@ function resolveWebServer(scope) {
   }
 }
 
-/** Mount the prefix route once `webServer` is available; skip in headless profiles. */
+/**
+ * Mount the two exact routes once `webServer` is available; skip in headless
+ * profiles.
+ *
+ * Exact paths, rather than one prefix route, keep the surface to the endpoints
+ * the page actually uses. Every registration runs inside a Context effect, so
+ * the web server drops both routes when this plugin stops or restarts — a
+ * plugin-owned route that outlived its context would make the next mount fail
+ * with a duplicate-path error and leave the page talking to stale code.
+ */
 export function registerSettingsRoute(ctx, handler) {
-  const route = { kind: 'prefix', path: ROUTE_PREFIX, handler };
-  const attach = (scope) => {
+  const paths = [`${ROUTE_PREFIX}/settings`, `${ROUTE_PREFIX}/test`];
+  const mount = (scope) => {
     const webServer = resolveWebServer(scope);
-    if (webServer === undefined) return () => {};
-    try {
-      return webServer.register(route);
-    } catch {
-      return () => {};
+    if (webServer === undefined) return;
+    for (const path of paths) {
+      scope.effect(() => {
+        try {
+          return webServer.register({ kind: 'exact', path, handler });
+        } catch {
+          // Another mount of this plugin already owns the path in this
+          // process; the page keeps working through that registration.
+          return () => {};
+        }
+      });
     }
   };
   if (typeof ctx.inject === 'function') {
-    ctx.inject(['webServer'], (inner) => {
-      attach(inner);
+    ctx.inject(['webServer'], (webCtx) => {
+      mount(webCtx);
     });
     return;
   }
-  if (resolveWebServer(ctx) !== undefined) {
-    ctx.effect(() => attach(ctx));
-  }
+  if (resolveWebServer(ctx) !== undefined) mount(ctx);
 }
 
 function sendJson(res, status, body) {
@@ -74,7 +90,7 @@ function sendError(res, error) {
   const status =
     code === 'EDITOR_UNAVAILABLE'
       ? 409
-      : code === 'INVALID_SETTINGS' || code === 'INVALID_BODY' || code === 'BODY_TOO_LARGE'
+      : code === 'INVALID_SETTINGS' || code === 'INVALID_TOKEN' || code === 'INVALID_BODY' || code === 'BODY_TOO_LARGE'
         ? 400
         : 500;
   sendJson(res, status, { error: { code, message: stripCode(error instanceof Error ? error.message : String(error)), hint } });
@@ -111,6 +127,25 @@ function hasWriteHeader(req) {
   return Array.isArray(header) ? header[0] === '1' : header === '1';
 }
 
+/** A mutation is only accepted from the local settings page. */
+function rejectUntrustedWrite(req, res) {
+  if (!isTrustedWriteOrigin(req.headers.origin)) {
+    sendJson(res, 403, {
+      error: {
+        code: 'FORBIDDEN',
+        message: '写入必须来自本机页面',
+        hint: `origin=${String(req.headers.origin)}`,
+      },
+    });
+    return true;
+  }
+  if (!hasWriteHeader(req)) {
+    sendJson(res, 403, { error: { code: 'FORBIDDEN', message: '缺少设置页写入标识', hint: null } });
+    return true;
+  }
+  return false;
+}
+
 async function readJsonBody(req) {
   const chunks = [];
   let total = 0;
@@ -136,6 +171,43 @@ async function readJsonBody(req) {
   return value;
 }
 
+/**
+ * Resolve the connection the test should use: unsaved draft values from the
+ * page when present, else the saved configuration and credential.
+ */
+async function resolveTestTarget(ctx, config, body) {
+  let baseUrl = String(config.baseUrl ?? '');
+  if (body.baseUrl !== undefined) {
+    if (typeof body.baseUrl !== 'string') {
+      return { failure: '实例地址必须是字符串' };
+    }
+    const normalized = normalizeBaseUrl(body.baseUrl);
+    if (normalized === null) {
+      return { failure: '实例地址必须是以 http(s) 开头的完整 URL；只有本机地址可以使用 http。' };
+    }
+    if (normalized === '') return { failure: '还没有填写实例地址。' };
+    baseUrl = normalized;
+  }
+  if (baseUrl === '') return { failure: '还没有配置实例地址，请先保存实例地址。' };
+
+  let token;
+  let source;
+  if (body.token !== undefined) {
+    if (typeof body.token !== 'string' || body.token.trim().length < TOKEN_MIN_LENGTH) {
+      return { failure: '令牌看起来太短；Firefly III 个人访问令牌是很长的 JWT 字符串。' };
+    }
+    token = body.token.trim();
+    source = 'draft';
+  } else {
+    try {
+      ({ token, source } = await resolveToken(ctx));
+    } catch (error) {
+      return { failure: error instanceof Error ? stripCode(error.message) : String(error) };
+    }
+  }
+  return { baseUrl, token, source };
+}
+
 /** Build the HTTP handler; `ctx` supplies the token and HTTP client facts. */
 export function createSettingsHandler({ ctx, config, settings }) {
   return async (req, res) => {
@@ -154,24 +226,11 @@ export function createSettingsHandler({ ctx, config, settings }) {
           return;
         }
         if (req.method === 'PUT') {
-          if (!isTrustedWriteOrigin(req.headers.origin)) {
-            sendJson(res, 403, {
-              error: {
-                code: 'FORBIDDEN',
-                message: '写入必须来自本机页面',
-                hint: `origin=${String(req.headers.origin)}`,
-              },
-            });
-            return;
-          }
-          if (!hasWriteHeader(req)) {
-            sendJson(res, 403, { error: { code: 'FORBIDDEN', message: '缺少设置页写入标识', hint: null } });
-            return;
-          }
+          if (rejectUntrustedWrite(req, res)) return;
           const body = await readJsonBody(req);
-          normalizeAutoCreatePatch(body.autoCreate);
-          await settings.save(body.autoCreate);
-          sendJson(res, 200, await settings.view());
+          // Validate before any write so a bad field cannot leave half a change.
+          normalizeSettingsPatch(body);
+          sendJson(res, 200, await settings.save(body));
           return;
         }
         sendJson(res, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '只支持 GET / PUT', hint: null } });
@@ -183,9 +242,15 @@ export function createSettingsHandler({ ctx, config, settings }) {
           sendJson(res, 405, { error: { code: 'METHOD_NOT_ALLOWED', message: '只支持 POST', hint: null } });
           return;
         }
+        if (rejectUntrustedWrite(req, res)) return;
+        const body = await readJsonBody(req);
+        const target = await resolveTestTarget(ctx, config, body);
+        if (target.failure !== undefined) {
+          sendJson(res, 200, { ok: false, message: target.failure });
+          return;
+        }
         try {
-          const { token, source } = await resolveToken(ctx);
-          const client = new FireflyClient(config, token);
+          const client = new FireflyClient({ ...config, baseUrl: target.baseUrl }, target.token);
           const about = await client.about();
           const version = String(about?.version ?? 'unknown');
           const apiVersion = String(about?.api_version ?? version);
@@ -195,13 +260,14 @@ export function createSettingsHandler({ ctx, config, settings }) {
             ok: !mismatch,
             version,
             apiVersion,
-            source,
-            baseUrl: String(config.baseUrl ?? ''),
+            source: target.source,
+            baseUrl: target.baseUrl,
             hint: mismatch ? `API 版本不以 ${prefix} 开头；请核对实例版本或 expectedApiPrefix。` : null,
           });
         } catch (error) {
           sendJson(res, 200, {
             ok: false,
+            baseUrl: target.baseUrl,
             message: error instanceof FireflyError ? stripCode(error.message) : error instanceof Error ? stripCode(error.message) : String(error),
           });
         }

@@ -1,15 +1,19 @@
 /**
  * Firefly III — Settings section (Web half).
  *
- * Registers one page in the Settings panel ("Firefly III"), where the five
- * `autoCreate` switches can be flipped without hand-editing YAML. Values are
- * read from and written to this package's Host half:
+ * Registers one page in the Settings panel ("Firefly III"), where the instance
+ * URL, the personal access token and the five `autoCreate` switches can be set
+ * without hand-editing YAML. Values are read from and written to this
+ * package's Host half:
  *
  *   GET  /firefly-iii-ui/settings   effective Config snapshot
  *   PUT  /firefly-iii-ui/settings   persists through the Host configEditor
- *   POST /firefly-iii-ui/test       checks the token against the instance
+ *                                   (switches, baseUrl) and credentials (token)
+ *   POST /firefly-iii-ui/test       checks a token against an instance, using
+ *                                   unsaved draft values when supplied
  *
- * The token value itself never reaches this page.
+ * The token value never reaches this page again after saving: the endpoint
+ * only never returns it, so the field always starts empty.
  */
 window.__ModuleLoader__.load({
   id: 'dsh-plugin-firefly-iii',
@@ -20,6 +24,7 @@ window.__ModuleLoader__.load({
 
     const ENDPOINT = '/firefly-iii-ui'
     const AUTO_KEYS = ['accounts', 'categories', 'tags', 'budgets', 'piggyBanks']
+    const TOKEN_MIN_LENGTH = 20
     const FONT =
       '-apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif'
     const MONO = 'ui-monospace, SFMono-Regular, Consolas, "Cascadia Mono", "Liberation Mono", monospace'
@@ -29,7 +34,7 @@ window.__ModuleLoader__.load({
     const COPY = {
       zh: {
         title: 'Firefly III',
-        subtitle: '记账插件的自动创建开关与连接状态；保存后写入本机 profile 配置并立即生效。',
+        subtitle: '在这里填写实例地址与访问令牌，并调整自动创建开关；保存后写入本机 profile 配置并立即生效。',
         autoTitle: '自动创建（autoCreate）',
         autoHint: '开启后，工具遇到不存在的对象会隐式创建；关闭时只接受 firefly_lookup 返回的真实 ID 或名称，不会猜测。',
         rows: {
@@ -40,15 +45,29 @@ window.__ModuleLoader__.load({
           piggyBanks: { title: '存钱罐', desc: '允许通过工具创建存钱罐' },
         },
         connectionTitle: '连接与凭据',
-        connectionHint: '令牌只存放在本机凭据库，不会显示在此页面；用 /firefly-token <token> 保存。',
+        connectionHint: '带 * 的两项可以在此填写；地址写入本机 profile 配置，令牌写入本机凭据库且不会再次显示。',
         baseUrl: '实例地址',
-        currency: '默认币种',
-        timeZone: '时区',
+        baseUrlHint: '以 https:// 开头；本机地址可以用 http。粘贴以 /api 或 /api/v1 结尾的地址会自动去掉。',
+        baseUrlPlaceholder: 'https://firefly.example.com/',
+        invalidBaseUrl: '实例地址必须是以 http(s) 开头的完整 URL。',
+        httpLocalOnly: '只有本机地址（localhost / 127.0.0.1）可以使用 http。',
         token: '访问令牌',
+        tokenHint:
+          '在 Firefly III 的 Profile → OAuth → Personal Access Tokens 里创建。令牌只保存在本机凭据库，保存后不会显示；留空表示不修改。',
+        tokenPlaceholderEmpty: '粘贴个人访问令牌（JWT）',
+        tokenPlaceholderStored: '已保存 · 留空表示不修改',
+        tokenTooShort: '令牌太短；Firefly III 的令牌是长 JWT 字符串，请确认复制完整。',
         tokenOn: '已配置',
         tokenOff: '未配置',
         tokenFromCredentials: '来自凭据库',
         tokenFromEnvironment: '来自环境变量',
+        tokenUnwritable: '凭据服务不可用，无法在此保存令牌。',
+        tokenEnvOnly: '当前令牌来自环境变量 FIREFLY_III_ACCESS_TOKEN，页面无法清除。',
+        clearToken: '清除令牌',
+        undoClear: '撤销清除',
+        clearPending: '保存后会删除已存储的令牌。',
+        currency: '默认币种',
+        timeZone: '时区',
         test: '测试连接',
         testing: '测试中…',
         testOk: '连接正常',
@@ -63,13 +82,13 @@ window.__ModuleLoader__.load({
         loadError: '读取设置失败',
         retry: '重试',
         endpointMissing: '设置端点未就绪：重启 DSH 后此页面才能读写配置。',
-        editorOff: '当前组合没有挂载配置编辑器，开关只能查看，不能保存。手动编辑 profile 的 cordis.patch.yml 可改默认值。',
-        restartHint: '配置已写入，但插件尚未切换到新值：重启 DSH 后生效。',
+        editorOff: '当前组合没有挂载配置编辑器，地址与开关只能查看；令牌仍可保存。手动编辑 profile 的 cordis.patch.yml 可改地址。',
+        restartHint: '配置已写入，但插件尚未切换到新值：稍等片刻仍不生效时请重启 DSH。',
         saveFailed: '保存失败',
       },
       en: {
         title: 'Firefly III',
-        subtitle: 'Auto-create switches and connection facts for the bookkeeping plugin. Saving writes the local profile config and applies it immediately.',
+        subtitle: 'Set the instance URL and access token here, and tune the auto-create switches. Saving writes the local profile config and applies it immediately.',
         autoTitle: 'Auto-create (autoCreate)',
         autoHint: 'When on, tools may create missing objects implicitly. When off, tools accept only ids or names returned by firefly_lookup and never guess.',
         rows: {
@@ -80,15 +99,29 @@ window.__ModuleLoader__.load({
           piggyBanks: { title: 'Piggy banks', desc: 'Allow tools to create piggy banks' },
         },
         connectionTitle: 'Connection and credentials',
-        connectionHint: 'The token stays in the local credential store and is never shown here. Save one with /firefly-token <token>.',
+        connectionHint: 'The two starred fields are editable. The URL is saved to the local profile config; the token goes to the local credential store and is never shown again.',
         baseUrl: 'Instance URL',
-        currency: 'Default currency',
-        timeZone: 'Time zone',
+        baseUrlHint: 'Start with https://; plain http is allowed for local addresses. A pasted trailing /api or /api/v1 is stripped.',
+        baseUrlPlaceholder: 'https://firefly.example.com/',
+        invalidBaseUrl: 'The instance URL must be a complete http(s) URL.',
+        httpLocalOnly: 'Only local addresses (localhost / 127.0.0.1) may use plain http.',
         token: 'Access token',
+        tokenHint:
+          'Create one under Profile → OAuth → Personal Access Tokens in Firefly III. The token stays in the local credential store and is never shown after saving; leave the field empty to keep it.',
+        tokenPlaceholderEmpty: 'Paste a personal access token (JWT)',
+        tokenPlaceholderStored: 'Saved · leave empty to keep',
+        tokenTooShort: 'The token looks too short; Firefly III tokens are long JWT strings.',
         tokenOn: 'Configured',
         tokenOff: 'Not configured',
         tokenFromCredentials: 'from credentials',
         tokenFromEnvironment: 'from environment',
+        tokenUnwritable: 'The credential service is unavailable, so the token cannot be saved here.',
+        tokenEnvOnly: 'The current token comes from FIREFLY_III_ACCESS_TOKEN and cannot be cleared here.',
+        clearToken: 'Clear token',
+        undoClear: 'Undo',
+        clearPending: 'Saving will delete the stored token.',
+        currency: 'Default currency',
+        timeZone: 'Time zone',
         test: 'Test connection',
         testing: 'Testing…',
         testOk: 'Connected',
@@ -103,8 +136,8 @@ window.__ModuleLoader__.load({
         loadError: 'Failed to load settings',
         retry: 'Retry',
         endpointMissing: 'Settings endpoint not ready: restart DSH to read and write configuration from this page.',
-        editorOff: 'This composition has no config editor, so the switches are read-only. Edit the profile cordis.patch.yml to change defaults.',
-        restartHint: 'Configuration was written but the plugin has not switched yet: restart DSH to apply it.',
+        editorOff: 'This composition has no config editor, so the URL and switches are read-only. The token can still be saved. Edit the profile cordis.patch.yml to change the URL.',
+        restartHint: 'Configuration was written but the plugin has not switched yet: if it stays unchanged, restart DSH.',
         saveFailed: 'Save failed',
       },
     }
@@ -130,9 +163,22 @@ window.__ModuleLoader__.load({
       '.ff3-switch[aria-checked="true"]::after { transform: translateX(14px); background: var(--dsw-alias-bg-base); }',
       '.ff3-switch:disabled { opacity: .5; cursor: default; }',
       '.ff3-switch:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }',
-      '.ff3-facts { display: grid; grid-template-columns: minmax(110px, max-content) minmax(0, 1fr); gap: 8px 16px; padding: 12px 16px 14px; border-top: 1px solid var(--dsw-alias-border-l1); }',
-      '.ff3-fact-label { font-size: 11.5px; line-height: 17px; color: var(--dsw-alias-label-secondary); }',
-      '.ff3-fact-value { font-size: 12px; line-height: 17px; word-break: break-all; }',
+      '.ff3-form { display: grid; grid-template-columns: minmax(96px, max-content) minmax(0, 1fr); gap: 12px 18px; padding: 14px 16px 16px; border-top: 1px solid var(--dsw-alias-border-l1); align-items: start; }',
+      '.ff3-label { font-size: 11.5px; line-height: 30px; color: var(--dsw-alias-label-secondary); white-space: nowrap; }',
+      '.ff3-required { color: var(--dsw-alias-state-error-primary); margin-left: 2px; }',
+      '.ff3-field { min-width: 0; }',
+      '.ff3-field-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }',
+      '.ff3-input { width: 100%; height: 30px; padding: 0 9px; border-radius: 8px; box-sizing: border-box;',
+      '  border: 1px solid var(--dsw-alias-border-l2); background: var(--dsw-alias-bg-base); color: var(--dsw-alias-label-primary);',
+      '  font-family: inherit; font-size: 12px; }',
+      '.ff3-input::placeholder { color: var(--dsw-alias-label-secondary); opacity: .75; }',
+      '.ff3-input:focus { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -1px; border-color: transparent; }',
+      '.ff3-input:disabled { opacity: .55; cursor: default; }',
+      '.ff3-input-mono { font-family: ' + MONO + '; font-size: 11.5px; }',
+      '.ff3-input-token { flex: 1 1 240px; width: auto; font-family: ' + MONO + '; }',
+      '.ff3-field-hint { margin-top: 5px; font-size: 11px; line-height: 16px; color: var(--dsw-alias-label-secondary); }',
+      '.ff3-field-error { margin-top: 5px; font-size: 11px; line-height: 16px; color: var(--dsw-alias-state-error-primary); }',
+      '.ff3-fact { font-size: 12px; line-height: 30px; }',
       '.ff3-mono { font-family: ' + MONO + '; font-size: 11.5px; }',
       '.ff3-token-line { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }',
       '.ff3-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-state-idle-primary); }',
@@ -156,6 +202,12 @@ window.__ModuleLoader__.load({
       '.ff3-footer-hint { font-size: 11.5px; line-height: 17px; color: var(--dsw-alias-label-secondary); }',
       '.ff3-loading { font-size: 12.5px; color: var(--dsw-alias-label-secondary); padding: 10px 0; }',
     ].join('\n')
+
+    const WRITE_HEADERS = {
+      'content-type': 'application/json',
+      accept: 'application/json',
+      'x-firefly-iii-ui': '1',
+    }
 
     function detectLang(ctx) {
       try {
@@ -193,6 +245,35 @@ window.__ModuleLoader__.load({
       return payload
     }
 
+    /**
+     * Read one settings payload. While the plugin restarts the SPA fallback can
+     * answer a 200 with the page HTML, so a non-settings body is retried rather
+     * than treated as state.
+     */
+    async function readSettings(response, missingMessage) {
+      const payload = await readJson(response, missingMessage)
+      if (payload === null || typeof payload !== 'object' || payload.ok !== true) {
+        throw new Error(missingMessage)
+      }
+      return payload
+    }
+
+    /** Same rules as the Host validator, so the page can explain a typo early. */
+    function baseUrlProblem(raw, copy) {
+      const value = String(raw || '').trim()
+      if (value === '') return null
+      let url
+      try {
+        url = new URL(value)
+      } catch (error) {
+        return copy.invalidBaseUrl
+      }
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') return copy.invalidBaseUrl
+      const local = ['localhost', '127.0.0.1', '::1'].indexOf(url.hostname) >= 0
+      if (url.protocol === 'http:' && !local) return copy.httpLocalOnly
+      return null
+    }
+
     function Switch(props) {
       const onChange = props.onChange
       return h('button', {
@@ -219,7 +300,16 @@ window.__ModuleLoader__.load({
 
       const applyView = React.useCallback((next) => {
         setView(next)
-        setDraft(next && next.autoCreate ? { ...next.autoCreate } : null)
+        setDraft(
+          next
+            ? {
+                autoCreate: { ...(next.autoCreate || {}) },
+                baseUrl: String((next.connection && next.connection.baseUrl) || ''),
+                token: '',
+                clearToken: false,
+              }
+            : null,
+        )
       }, [])
 
       const load = React.useCallback(async () => {
@@ -230,7 +320,7 @@ window.__ModuleLoader__.load({
             headers: { accept: 'application/json' },
             cache: 'no-store',
           })
-          applyView(await readJson(response, copy.endpointMissing))
+          applyView(await readSettings(response, copy.endpointMissing))
         } catch (failure) {
           setError(failure instanceof Error ? failure.message : String(failure))
         } finally {
@@ -242,94 +332,19 @@ window.__ModuleLoader__.load({
         load()
       }, [load])
 
-      const dirty =
-        view && draft && AUTO_KEYS.some((key) => draft[key] !== !!(view.autoCreate && view.autoCreate[key]))
-
-      function toggle(key) {
-        if (!draft) return
-        setNotice(null)
-        setDraft({ ...draft, [key]: !draft[key] })
-      }
-
-      async function waitForApplied(target) {
-        for (let attempt = 0; attempt < 10; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 300))
-          try {
-            const response = await fetch(ENDPOINT + '/settings', {
-              headers: { accept: 'application/json' },
-              cache: 'no-store',
-            })
-            const next = await readJson(response, copy.endpointMissing)
-            const matched = AUTO_KEYS.every((key) => !!next.autoCreate[key] === target[key])
-            if (matched) {
-              applyView(next)
-              return true
-            }
-          } catch (error) {
-            // The endpoint disappears briefly while the plugin restarts.
-          }
-        }
-        return false
-      }
-
-      async function save() {
-        if (!draft) return
-        setSaving(true)
-        setNotice(null)
-        const target = {}
-        for (const key of AUTO_KEYS) target[key] = !!draft[key]
-        try {
-          const response = await fetch(ENDPOINT + '/settings', {
-            method: 'PUT',
-            headers: {
-              'content-type': 'application/json',
-              accept: 'application/json',
-              'x-firefly-iii-ui': '1',
-            },
-            body: JSON.stringify({ autoCreate: target }),
-          })
-          await readJson(response, copy.endpointMissing)
-          const applied = await waitForApplied(target)
-          setNotice(applied ? { tone: 'success', text: copy.saved } : { tone: 'warn', text: copy.restartHint })
-          if (!applied) {
-            setDraft({ ...target })
-          }
-        } catch (failure) {
-          setNotice({
-            tone: 'error',
-            text: copy.saveFailed + ': ' + (failure instanceof Error ? failure.message : String(failure)),
-          })
-        } finally {
-          setSaving(false)
-        }
-      }
-
-      async function test() {
-        setTesting(true)
-        setTestResult(null)
-        try {
-          const response = await fetch(ENDPOINT + '/test', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', accept: 'application/json' },
-            body: '{}',
-          })
-          setTestResult(await readJson(response, copy.endpointMissing))
-        } catch (failure) {
-          setTestResult({ ok: false, message: failure instanceof Error ? failure.message : String(failure) })
-        } finally {
-          setTesting(false)
-        }
-      }
-
-      const header = h(
-        'div',
-        { className: 'ff3-head', key: 'head' },
-        h('div', { className: 'ff3-title' }, copy.title),
-        h('div', { className: 'ff3-sub' }, copy.subtitle),
-      )
-
       if (loading) {
-        return h('div', { className: 'ff3-root' }, h('style', { key: 'css' }, CSS), header, h('div', { className: 'ff3-loading' }, copy.loading))
+        return h(
+          'div',
+          { className: 'ff3-root' },
+          h('style', { key: 'css' }, CSS),
+          h(
+            'div',
+            { className: 'ff3-head', key: 'head' },
+            h('div', { className: 'ff3-title' }, copy.title),
+            h('div', { className: 'ff3-sub' }, copy.subtitle),
+          ),
+          h('div', { className: 'ff3-loading' }, copy.loading),
+        )
       }
 
       if (error !== null) {
@@ -337,7 +352,12 @@ window.__ModuleLoader__.load({
           'div',
           { className: 'ff3-root' },
           h('style', { key: 'css' }, CSS),
-          header,
+          h(
+            'div',
+            { className: 'ff3-head', key: 'head' },
+            h('div', { className: 'ff3-title' }, copy.title),
+            h('div', { className: 'ff3-sub' }, copy.subtitle),
+          ),
           h(
             'div',
             { className: 'ff3-error' },
@@ -354,6 +374,143 @@ window.__ModuleLoader__.load({
       const editable = view && view.editable === true
       const token = (view && view.token) || {}
       const connection = (view && view.connection) || {}
+      const tokenWritable = token.writable !== false
+      const savedBaseUrl = String(connection.baseUrl || '')
+      const configured = savedBaseUrl !== ''
+
+      const draftState = draft || {
+        autoCreate: { ...((view && view.autoCreate) || {}) },
+        baseUrl: savedBaseUrl,
+        token: '',
+        clearToken: false,
+      }
+      const autoDirty = AUTO_KEYS.some(
+        (key) => !!draftState.autoCreate[key] !== !!(view && view.autoCreate && view.autoCreate[key]),
+      )
+      const baseDirty = draftState.baseUrl.trim() !== savedBaseUrl
+      const tokenDirty = draftState.token.trim() !== '' || draftState.clearToken
+      const dirty = autoDirty || baseDirty || tokenDirty
+      const needsConfigWrite = autoDirty || baseDirty
+      const baseProblem = baseUrlProblem(draftState.baseUrl, copy)
+      const tokenProblem =
+        draftState.token.trim() !== '' && draftState.token.trim().length < TOKEN_MIN_LENGTH ? copy.tokenTooShort : null
+      const invalid = baseProblem !== null || tokenProblem !== null
+      const blocked = (needsConfigWrite && !editable) || (tokenDirty && !tokenWritable)
+      const saveDisabled = !dirty || saving || invalid || blocked
+
+      function setField(name, value) {
+        setNotice(null)
+        setTestResult(null)
+        setDraft({ ...draftState, [name]: value })
+      }
+
+      function toggle(key) {
+        if (!editable) return
+        const next = { ...draftState.autoCreate, [key]: !draftState.autoCreate[key] }
+        setNotice(null)
+        setDraft({ ...draftState, autoCreate: next })
+      }
+
+      /** Poll the Host until the saved values are the effective ones. */
+      async function waitForApplied(saved) {
+        const expectedAuto = saved && saved.autoCreate
+          ? { ...(view.autoCreate || {}), ...saved.autoCreate }
+          : null
+        const expectedBase = saved && typeof saved.baseUrl === 'string' ? saved.baseUrl : null
+        const expectedToken = saved ? saved.token : null
+        for (let attempt = 0; attempt < 14; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 350))
+          try {
+            const response = await fetch(ENDPOINT + '/settings', {
+              headers: { accept: 'application/json' },
+              cache: 'no-store',
+            })
+            const next = await readSettings(response, copy.endpointMissing)
+            const autoOk =
+              expectedAuto === null || AUTO_KEYS.every((key) => !!next.autoCreate[key] === !!expectedAuto[key])
+            const baseOk = expectedBase === null || String((next.connection && next.connection.baseUrl) || '') === expectedBase
+            const tokenOk =
+              expectedToken === 'saved'
+                ? !!(next.token && next.token.configured)
+                : expectedToken === 'cleared'
+                  ? !(next.token && next.token.stored)
+                  : true
+            if (autoOk && baseOk && tokenOk) return next
+          } catch (failure) {
+            // The settings route disappears briefly while the plugin restarts.
+          }
+        }
+        return null
+      }
+
+      async function save() {
+        if (saveDisabled) return
+        setSaving(true)
+        setNotice(null)
+        const payload = {}
+        if (autoDirty) {
+          const changed = {}
+          for (const key of AUTO_KEYS) {
+            if (!!draftState.autoCreate[key] !== !!(view.autoCreate && view.autoCreate[key])) {
+              changed[key] = !!draftState.autoCreate[key]
+            }
+          }
+          payload.autoCreate = changed
+        }
+        if (baseDirty) payload.baseUrl = draftState.baseUrl.trim()
+        if (draftState.clearToken) payload.clearToken = true
+        else if (draftState.token.trim() !== '') payload.token = draftState.token.trim()
+        try {
+          const response = await fetch(ENDPOINT + '/settings', {
+            method: 'PUT',
+            headers: WRITE_HEADERS,
+            body: JSON.stringify(payload),
+          })
+          const result = await readSettings(response, copy.endpointMissing)
+          // The pasted secret is never kept in page state after a successful write.
+          setDraft({ ...draftState, token: '', clearToken: false })
+          const applied = await waitForApplied(result && result.saved ? result.saved : {})
+          if (applied) {
+            applyView(applied)
+            setNotice({ tone: 'success', text: copy.saved })
+          } else {
+            setNotice({ tone: 'warn', text: copy.restartHint })
+            load()
+          }
+        } catch (failure) {
+          setNotice({
+            tone: 'error',
+            text: copy.saveFailed + ': ' + (failure instanceof Error ? failure.message : String(failure)),
+          })
+        } finally {
+          setSaving(false)
+        }
+      }
+
+      /** Test the values currently typed, so a token can be verified before saving. */
+      async function test() {
+        if (baseProblem !== null || tokenProblem !== null) {
+          setTestResult({ ok: false, message: baseProblem || tokenProblem })
+          return
+        }
+        setTesting(true)
+        setTestResult(null)
+        const body = {}
+        if (draftState.baseUrl.trim() !== '') body.baseUrl = draftState.baseUrl.trim()
+        if (draftState.token.trim() !== '') body.token = draftState.token.trim()
+        try {
+          const response = await fetch(ENDPOINT + '/test', {
+            method: 'POST',
+            headers: WRITE_HEADERS,
+            body: JSON.stringify(body),
+          })
+          setTestResult(await readJson(response, copy.endpointMissing))
+        } catch (failure) {
+          setTestResult({ ok: false, message: failure instanceof Error ? failure.message : String(failure) })
+        } finally {
+          setTesting(false)
+        }
+      }
 
       const autoRows = AUTO_KEYS.map((key) => {
         const meta = copy.rows[key]
@@ -367,8 +524,8 @@ window.__ModuleLoader__.load({
             h('div', { className: 'ff3-row-desc' }, meta.desc),
           ),
           h(Switch, {
-            checked: draft ? !!draft[key] : false,
-            disabled: !editable || saving || dirty === undefined,
+            checked: !!draftState.autoCreate[key],
+            disabled: !editable || saving || testing,
             label: meta.title,
             onChange: () => toggle(key),
           }),
@@ -392,12 +549,53 @@ window.__ModuleLoader__.load({
           (token.stored ? ' · ' + copy.tokenFromCredentials : token.environment ? ' · ' + copy.tokenFromEnvironment : '')
         : copy.tokenOff
 
+      const tokenHint = !tokenWritable
+        ? copy.tokenUnwritable
+        : draftState.clearToken
+          ? copy.clearPending
+          : token.stored
+            ? copy.tokenHint
+            : token.environment
+              ? copy.tokenEnvOnly
+              : copy.tokenHint
+
+      const tokenStatusLine = h(
+        'div',
+        { className: 'ff3-field-hint' },
+        h(
+          'span',
+          { className: 'ff3-token-line' },
+          h('span', { className: 'ff3-dot' + (token.configured ? ' ff3-dot-on' : '') }),
+          h('span', {}, tokenLabel),
+          token.stored && tokenWritable
+            ? h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'ff3-btn',
+                  style: { height: 24, padding: '0 8px', fontSize: 11 },
+                  disabled: saving || testing,
+                  onClick: () => {
+                    setNotice(null)
+                    setTestResult(null)
+                    setDraft({
+                      ...draftState,
+                      token: '',
+                      clearToken: !draftState.clearToken,
+                    })
+                  },
+                },
+                draftState.clearToken ? copy.undoClear : copy.clearToken,
+              )
+            : null,
+        ),
+      )
+
       const testLine = testResult
         ? h(
             'div',
             {
-              className:
-                'ff3-notice ' + (testResult.ok ? 'ff3-notice-success' : 'ff3-notice-error'),
+              className: 'ff3-notice ' + (testResult.ok ? 'ff3-notice-success' : 'ff3-notice-error'),
               style: { marginTop: 0 },
             },
             testResult.ok
@@ -407,6 +605,7 @@ window.__ModuleLoader__.load({
                 ' (API ' +
                 String(testResult.apiVersion || '?') +
                 ')' +
+                (testResult.baseUrl ? ' · ' + String(testResult.baseUrl) : '') +
                 (testResult.hint ? ' — ' + testResult.hint : '')
               : copy.testFail + ' · ' + String(testResult.message || testResult.hint || ''),
           )
@@ -423,42 +622,86 @@ window.__ModuleLoader__.load({
         ),
         h(
           'div',
-          { className: 'ff3-facts' },
-          h('div', { className: 'ff3-fact-label' }, copy.baseUrl),
-          h('div', { className: 'ff3-fact-value ff3-mono' }, String(connection.baseUrl || '—')),
-          h('div', { className: 'ff3-fact-label' }, copy.currency),
-          h('div', { className: 'ff3-fact-value' }, String(connection.currency || '—')),
-          h('div', { className: 'ff3-fact-label' }, copy.timeZone),
-          h('div', { className: 'ff3-fact-value' }, String(connection.timeZone || '—')),
-          h('div', { className: 'ff3-fact-label' }, copy.token),
+          { className: 'ff3-form' },
+          h(
+            'label',
+            { className: 'ff3-label', htmlFor: 'ff3-base-url' },
+            copy.baseUrl,
+            h('span', { className: 'ff3-required' }, '*'),
+          ),
           h(
             'div',
-            { className: 'ff3-fact-value' },
+            { className: 'ff3-field' },
+            h('input', {
+              id: 'ff3-base-url',
+              type: 'url',
+              className: 'ff3-input ff3-input-mono',
+              value: draftState.baseUrl,
+              placeholder: copy.baseUrlPlaceholder,
+              disabled: !editable || saving || testing,
+              spellCheck: false,
+              autoComplete: 'off',
+              'aria-invalid': baseProblem !== null ? 'true' : 'false',
+              onChange: (event) => setField('baseUrl', event.target.value),
+            }),
+            baseProblem !== null
+              ? h('div', { className: 'ff3-field-error' }, baseProblem)
+              : h('div', { className: 'ff3-field-hint' }, copy.baseUrlHint),
+          ),
+
+          h(
+            'label',
+            { className: 'ff3-label', htmlFor: 'ff3-token' },
+            copy.token,
+            h('span', { className: 'ff3-required' }, '*'),
+          ),
+          h(
+            'div',
+            { className: 'ff3-field' },
             h(
-              'span',
-              { className: 'ff3-token-line' },
-              h('span', { className: 'ff3-dot' + (token.configured ? ' ff3-dot-on' : '') }),
-              h('span', {}, tokenLabel),
+              'div',
+              { className: 'ff3-field-line' },
+              h('input', {
+                id: 'ff3-token',
+                type: 'password',
+                className: 'ff3-input ff3-input-token',
+                value: draftState.token,
+                placeholder: token.stored ? copy.tokenPlaceholderStored : copy.tokenPlaceholderEmpty,
+                disabled: !tokenWritable || saving || testing || draftState.clearToken,
+                spellCheck: false,
+                autoComplete: 'new-password',
+                'aria-invalid': tokenProblem !== null ? 'true' : 'false',
+                onChange: (event) => setField('token', event.target.value),
+              }),
               h(
                 'button',
                 {
                   type: 'button',
                   className: 'ff3-btn',
-                  style: { height: 26, padding: '0 10px', fontSize: 11.5 },
-                  disabled: testing || !token.configured,
+                  style: { height: 30, padding: '0 11px', fontSize: 11.5, flex: 'none' },
+                  disabled: testing || saving || draftState.clearToken || (configured === false && draftState.baseUrl.trim() === ''),
                   onClick: test,
                 },
                 testing ? copy.testing : copy.test,
               ),
             ),
+            tokenProblem !== null ? h('div', { className: 'ff3-field-error' }, tokenProblem) : null,
+            tokenStatusLine,
+            h('div', { className: 'ff3-field-hint' }, tokenHint),
           ),
+
+          h('div', { className: 'ff3-label' }, copy.currency),
+          h('div', { className: 'ff3-fact' }, String(connection.currency || '—')),
+
+          h('div', { className: 'ff3-label' }, copy.timeZone),
+          h('div', { className: 'ff3-fact' }, String(connection.timeZone || '—')),
         ),
         testLine ? h('div', { style: { padding: '0 16px 14px' } }, testLine) : null,
       )
 
       const banner = editable
         ? null
-        : h('div', { className: 'ff3-notice ff3-notice-warn' }, view && view.reason ? view.reason || copy.editorOff : copy.editorOff)
+        : h('div', { className: 'ff3-notice ff3-notice-warn' }, (view && view.reason) || copy.editorOff)
 
       const footerHint = dirty ? copy.unsaved : copy.unchanged
 
@@ -477,6 +720,7 @@ window.__ModuleLoader__.load({
               disabled: !dirty || saving,
               onClick: () => {
                 setNotice(null)
+                setTestResult(null)
                 applyView(view)
               },
             },
@@ -487,7 +731,7 @@ window.__ModuleLoader__.load({
             {
               type: 'button',
               className: 'ff3-btn ff3-btn-primary',
-              disabled: !editable || !dirty || saving,
+              disabled: saveDisabled,
               onClick: save,
             },
             saving ? copy.saving : copy.save,
@@ -515,7 +759,12 @@ window.__ModuleLoader__.load({
         'div',
         { className: 'ff3-root' },
         h('style', { key: 'css' }, CSS),
-        header,
+        h(
+          'div',
+          { className: 'ff3-head', key: 'head' },
+          h('div', { className: 'ff3-title' }, copy.title),
+          h('div', { className: 'ff3-sub' }, copy.subtitle),
+        ),
         banner,
         autoCard,
         connectionCard,

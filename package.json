@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-firefly-iii",
-  "version": "0.2.0",
-  "description": "Firefly III bookkeeping for DeepSeek Harness: transactions, accounts, budgets, reports, subscriptions, recurring transactions, piggy banks, attachments, rules, currencies and CSV export, with a bundled skill and a Web settings page.",
+  "version": "0.3.0",
+  "description": "Firefly III bookkeeping for DeepSeek Harness: transactions, accounts, budgets, reports, subscriptions, recurring transactions, piggy banks, attachments, rules, currencies and CSV export, with a bundled skill and a Web settings page for the instance URL, access token and auto-create switches.",
   "type": "module",
   "main": "index.js",
   "exports": {

@@ -35,6 +35,11 @@ function displayNames(split, metadata) {
   };
 }
 
+function createdResource(payload) {
+  const data = payload?.data ?? payload;
+  return Array.isArray(data) ? data[0] : data;
+}
+
 export const recordTool = jsonTool({
   name: 'firefly_record',
   description:
@@ -142,13 +147,13 @@ export const recordTool = jsonTool({
     if (split) {
       const payload = wrap(normalized);
       const created = await client.post('transactions', payload, { signal });
-      const group = compactTransactionGroup(created);
+      const group = compactTransactionGroup(createdResource(created));
       items.push({ index: 1, status: 'created', id: group.id, payload, created: group, display: normalized.map((entry) => displayNames(entry, metadata)) });
     } else {
       for (const [index, entry] of normalized.entries()) {
         const payload = wrap([entry]);
         const created = await client.post('transactions', payload, { signal });
-        const group = compactTransactionGroup(created);
+        const group = compactTransactionGroup(createdResource(created));
         items.push({ index: index + 1, status: 'created', id: group.id, payload, created: group, display: [displayNames(entry, metadata)] });
       }
     }

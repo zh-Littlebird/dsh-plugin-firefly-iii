@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "Firefly III 记账",
-    "description": "在对话里直接录入、查询、修正和删除 Firefly III 交易，并维护账户、分类、预算、标签等主数据。九个领域工具覆盖交易、主数据、报表、订阅/周期交易/存钱罐、附件、规则/币种/Webhook 和 CSV 导出。每次写入前实时读取元数据；autoCreate 关闭时拒绝猜测 ID；删除、批量账户搬迁、预算额度修改、规则/Webhook 触发和币种变更一律要求审批。purge 与 destroy 端点永久拦截。用 /firefly-token 保存个人访问令牌（不会写入日志），用 /firefly-status 检查连接。附件读写限制在会话工作区内，并受 maxAttachmentMb 约束；账目数据只发送到配置的 Firefly III 实例。会话审批策略为 Never 时破坏性操作会被拒绝，需要改为 Ask 才能使用。设置 → Firefly III 页面可直接切换五项 autoCreate 开关、查看连接状态并测试连接；保存通过 configEditor 写入本机 profile。",
+    "description": "在对话里直接录入、查询、修正和删除 Firefly III 交易，并维护账户、分类、预算、标签等主数据。九个领域工具覆盖交易、主数据、报表、订阅/周期交易/存钱罐、附件、规则/币种/Webhook 和 CSV 导出。每次写入前实时读取元数据；autoCreate 关闭时拒绝猜测 ID；删除、批量账户搬迁、预算额度修改、规则/Webhook 触发和币种变更一律要求审批。purge 与 destroy 端点永久拦截。设置 → Firefly III 页面可直接填写实例地址和个人访问令牌（令牌只写入本机凭据库）、切换五项 autoCreate 开关并测试连接；保存通过 configEditor 写入本机 profile，也可继续用 /firefly-token 命令保存令牌，用 /firefly-status 检查连接。附件读写限制在会话工作区内，并受 maxAttachmentMb 约束；账目数据只发送到配置的 Firefly III 实例。会话审批策略为 Never 时破坏性操作会被拒绝，需要改为 Ask 才能使用。",
     "detail": "docs/DETAIL.zh.md"
   }
 }
